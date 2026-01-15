@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+
+# local data and outputs (optional: keep tracked if you prefer)
+output/*.csv
+data/*.csv
+prompt.txt
