@@ -8,3 +8,4 @@ venv/
 output/*.csv
 data/*.csv
 prompt.txt
+.~lock*
