@@ -38,6 +38,22 @@ Examples
 
 3) Counts:
    python3 src/analyze_outputs_pd.py --file output/violations_summary_string.csv --counts Violation ViolationType Method
+
+3) Inspect unordered test output (violations + non-violations already include PC_A/PC_B):
+   python3 src/analyze_outputs_pd.py \
+     --file output/violations_only_unordered_test.csv \
+     --show-violations 50 \
+     --format vertical --display-width 120 \
+     --select Project File Caller Callee_A Callee_B PC_A PC_B Violation
+
+4) Show ONLY non-violations (Violation=NO) from unordered test output:
+   python3 src/analyze_outputs_pd.py \
+     --file output/violations_only_unordered_test.csv \
+     --show-violation NO \
+     --show 50 \
+     --format vertical --display-width 120 \
+     --select Project File Caller Callee_A Callee_B PC_A PC_B Violation
+
 """
 
 
@@ -178,7 +194,7 @@ def main() -> None:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=USAGE_EXAMPLES,
     )
-    ap.add_argument("--file", required=True, help="Path to a summary CSV file.")
+    ap.add_argument("--file", required=True, help="Path to a CSV output file (summary/evidence/evaluation).")
     ap.add_argument("--chunksize", type=int, default=200_000, help="Pandas chunksize for streaming reads.")
     ap.add_argument("--info", action="store_true", help="Print header + total data row count.")
     ap.add_argument("--counts", nargs="*", default=[], help="Columns to value_count.")
@@ -227,12 +243,15 @@ def main() -> None:
         print("Data rows:", nrows)
 
     base_filters = parse_where(args.where) if args.where else []
+    if getattr(args, "show_violation", ""):
+        base_filters.append(("Violation", args.show_violation))
     show_filters = list(base_filters)
     if args.show_violations and args.show_violations > 0:
         if not has_filter(show_filters, "Violation"):
             show_filters.append(("Violation", args.violation_value))
 
     counts_acc: Dict[str, Counter] = {col: Counter() for col in args.counts}
+    violation_summary: Counter = Counter()
     offenders: Counter = Counter()
     pattern_total: Counter = Counter()
     pattern_yes: Counter = Counter()
@@ -293,6 +312,10 @@ def main() -> None:
         filtered_show = apply_filters(chunk, show_filters) if show_filters else chunk
         filtered_export = apply_filters(chunk, base_filters) if base_filters else chunk
 
+
+        # Violation summary (after --where/--show-violation)
+        if "Violation" in filtered_export.columns and not filtered_export.empty:
+            violation_summary.update(filtered_export["Violation"].astype(str).tolist())
         # Export
         if args.export and exported < args.export_max and not filtered_export.empty:
             remaining = args.export_max - exported
@@ -365,6 +388,17 @@ def main() -> None:
             print_vertical(df_show, args.display_width)
         else:
             print_table(df_show, args.display_width, args.max_colwidth)
+    # Print violation summary (useful to validate detectors)
+    if violation_summary:
+        total = sum(violation_summary.values())
+        print("\n=== Violation Summary (after filters) ===")
+        for key in ["YES", "NO"]:
+            if key in violation_summary:
+                print(f"  {key}: {violation_summary[key]}")
+        for key in sorted(k for k in violation_summary.keys() if k not in {"YES", "NO"}):
+            print(f"  {key}: {violation_summary[key]}")
+        print(f"  TOTAL: {total}")
+
 
     # Print counts
     for col in args.counts:
