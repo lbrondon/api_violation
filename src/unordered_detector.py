@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
+from collections import defaultdict
 
 import csv
 import os
@@ -15,7 +16,7 @@ GroupKey = Tuple[str, str, str]  # (Project, File, Caller)
 
 @dataclass(frozen=True)
 class Pattern:
-    """Catalog pattern row (A,B) exactly as provided by patterns_unordered_test.csv."""
+    """Catalog pair (A,B) after unordered expansion."""
     callee_a: str
     callee_b: str
 
@@ -23,7 +24,7 @@ class Pattern:
 @dataclass(frozen=True)
 class EvaluationRow:
     """
-    Output row (violations + non-violations), faithful to the catalog direction only.
+    Output row (violations + non-violations) for one analyzed pair direction.
 
     Columns (fixed):
       Project, File, Caller, Callee_A, Callee_B, PC_A, PC_B, Violation
@@ -33,7 +34,7 @@ class EvaluationRow:
     - One row is emitted for each (pc_a, pc_b) in PCs(A) x PCs(B).
     - Violation rule (simple/strong):
         Violation = YES iff PC_A != PC_B, else NO.
-    - We DO NOT generate reversed pairs unless they exist in the catalog input.
+    - Reversed pairs are considered by expanding the catalog in load_patterns.
     - We ONLY report rows when BOTH A and B exist in the caller group.
     """
     project: str
@@ -48,13 +49,13 @@ class EvaluationRow:
 
 class UnorderedViolationDetector:
     """
-    Catalog-faithful detector for unordered patterns (TEST).
+    String-based detector for unordered API-usage patterns.
 
     For each group = (Project, File, Caller) and each catalog pair (A,B):
       - If BOTH A and B occur in the group:
           For every (pc_a, pc_b) in PCs(A) x PCs(B):
               Output Violation=YES if pc_a != pc_b else NO.
-      - Otherwise: output nothing (per your rule "report only when both exist").
+      - Otherwise: output nothing (reports only when both exist).
 
     PC handling:
       - PC must be non-empty (TRUE allowed).
@@ -65,6 +66,12 @@ class UnorderedViolationDetector:
 
     def __init__(self, patterns: List[Pattern]) -> None:
         self.patterns = patterns
+        # Index catalog pairs by callee so each group checks only relevant patterns.
+        self._pattern_idxs_by_callee: Dict[str, List[int]] = defaultdict(list)
+        for idx, pat in enumerate(patterns):
+            self._pattern_idxs_by_callee[pat.callee_a].append(idx)
+            if pat.callee_b != pat.callee_a:
+                self._pattern_idxs_by_callee[pat.callee_b].append(idx)
 
     @staticmethod
     def load_patterns(patterns_csv_path: str) -> List[Pattern]:
@@ -75,12 +82,23 @@ class UnorderedViolationDetector:
             raise ValueError(f"[patterns] Missing columns: {sorted(missing)}")
 
         out: List[Pattern] = []
-        for _, r in df.iterrows():
-            a = str(r["antecedents"]).strip()
-            b = str(r["consequents"]).strip()
+        seen: Set[Tuple[str, str]] = set()
+        for r in df.itertuples(index=False):
+            a = str(getattr(r, "antecedents")).strip()
+            b = str(getattr(r, "consequents")).strip()
             if not a or not b:
                 continue
-            out.append(Pattern(callee_a=a, callee_b=b))
+
+            key = (a, b)
+            if key not in seen:
+                out.append(Pattern(callee_a=a, callee_b=b))
+                seen.add(key)
+
+            # Unordered relation: (A,B) also implies (B,A).
+            rev = (b, a)
+            if a != b and rev not in seen:
+                out.append(Pattern(callee_a=b, callee_b=a))
+                seen.add(rev)
         return out
 
     @staticmethod
@@ -94,12 +112,13 @@ class UnorderedViolationDetector:
             if missing:
                 raise ValueError(f"[pc_csv] Missing columns: {sorted(missing)}")
 
-            for _, r in chunk.iterrows():
-                project = str(r["Project"])
-                file_ = str(r["File"])
-                caller = str(r["Caller"])
-                callee = str(r["Callee"]).strip()
-                pc_raw = "" if pd.isna(r["PC"]) else str(r["PC"]).strip()
+            for r in chunk.itertuples(index=False):
+                project = str(getattr(r, "Project"))
+                file_ = str(getattr(r, "File"))
+                caller = str(getattr(r, "Caller"))
+                callee = str(getattr(r, "Callee")).strip()
+                pc_cell = getattr(r, "PC")
+                pc_raw = "" if pd.isna(pc_cell) else str(pc_cell).strip()
 
                 if pc_raw == "":
                     continue
@@ -122,9 +141,14 @@ class UnorderedViolationDetector:
         Returns rows for both violations and non-violations (YES/NO).
         """
         rows: List[EvaluationRow] = []
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
         for (project, file_, caller), cmap in pc_map.items():
-            for pat in self.patterns:
+            candidate_idxs: Set[int] = set()
+            for callee in cmap.keys():
+                candidate_idxs.update(self._pattern_idxs_by_callee.get(callee, []))
+
+            for pat_idx in sorted(candidate_idxs):
+                pat = self.patterns[pat_idx]
                 A = pat.callee_a
                 B = pat.callee_b
 

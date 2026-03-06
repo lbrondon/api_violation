@@ -1,53 +1,141 @@
 # api_violation
 
-String-based detector for API-usage pattern violations in configurable C systems,
-using presence conditions (PC) extracted from preprocessor directives.
+String-based detector for API usage pattern violations in configurable C systems, using `Presence Conditions (PC)`.
 
-## Inputs (default locations)
-- data/cs_projects__with_pc.csv
-  Columns: Project, File, Caller, Callee, PC
-  PC may be a boolean expression or sentinel values:
-  - TRUE
-  - FILE_NOT_FOUND, CALLER_NOT_FOUND, CALL_NOT_FOUND
+## Goal
+Detect potential violations in API usage pairs (for example `fopen`/`fclose`) while considering compile-time variability from preprocessor conditions.
 
-- data/patterns_unordered.csv
-  Columns: antecedents, consequents, support, confidence, lift
+## Full technical documentation
+For architecture, internal flow, algorithmic decisions, and data model:
 
-## Outputs
-- output/violations_summary.csv
-- output/violations_evidence.csv
+- [docs/IDENTIFICADOR.md](docs/IDENTIFICADOR.md)
 
-## Run (Milestone 1: indexing + validation)
-python3 src/main.py
+## Requirements
 
-## Install dependencies (no venv)
-Option 1 (APT):
+## Python
+- `python3` (recommended 3.10+)
+
+## Dependencies
+Option A (APT):
+
+```bash
 sudo apt update
 sudo apt install -y python3-pandas python3-tqdm
+```
 
-Option 2 (pip --user):
+Option B (pip user):
+
+```bash
 python3 -m pip install --user pandas tqdm
+```
 
-## Run
+## Input structure
+Large data files are not versioned. Place them under `data/`.
+
+## Call-with-PC file
+- Typical path: `data/57_cs_projects_with_pc.csv`
+- Required columns: `Project, File, Caller, Callee, PC`
+- `PC` may contain:
+  - textual boolean expression
+  - `TRUE`
+  - sentinels: `FILE_NOT_FOUND`, `CALLER_NOT_FOUND`, `CALL_NOT_FOUND`
+
+## Pattern catalog
+- Typical path: `data/patterns_unordered.csv`
+- Required columns: `antecedents, consequents, support, confidence, lift`
+- The system treats patterns as unordered:
+  - if `(A,B)` exists, `(B,A)` is also analyzed
+
+## Quick run
+Using defaults:
+
+```bash
 python3 src/main.py
+```
 
-## Data files (not committed)
-This repository does **not** commit large CSV inputs/outputs. Make sure you place the required files locally under `data/`.
+## Available modes
 
-### Required inputs
-Put these files in the `data/` folder:
+## `unordered-string` (current baseline)
+Compares `PC_A` and `PC_B` as strings.
 
-- `data/cs_projects__with_pc.csv`
-  - Columns: `Project, File, Caller, Callee, PC`
-  - `PC` may be a boolean expression, `TRUE`, or sentinel values (`FILE_NOT_FOUND`, `CALLER_NOT_FOUND`, `CALL_NOT_FOUND`).
+```bash
+python3 src/main.py --mode unordered-string
+```
 
-- `data/patterns_unordered.csv`
-  - Columns: `antecedents, consequents, support, confidence, lift`
+## `summary-string`
+Generates summary/evidence per group and pattern using PC set comparison.
 
-### Outputs
-Running the pipeline generates CSV files under `output/`, for example:
+```bash
+python3 src/main.py --mode summary-string --print-index-stats
+```
 
+## `short-circuit`
+Classifies cases based on A/B presence or absence (without SAT).
+
+```bash
+python3 src/main.py --mode short-circuit --print-index-stats
+```
+
+## `sat`
+Uses SAT to distinguish `A && !B` and `B && !A` when both sides exist.
+
+```bash
+python3 src/main.py --mode sat --print-index-stats
+```
+
+## Key arguments
+- `--pc-csv`: path to call CSV
+- `--patterns`: path to pattern CSV
+- `--output-dir`: output directory
+- `--output-file`: specific output for `unordered-string`
+- `--chunksize`: chunk size for streaming reads
+- `--dedup-unordered-output`: generate deduplicated CSV after `unordered-string`
+- `--dedup-output-file`: custom path for deduplicated output
+
+## Full example (`unordered-string` + deduplication)
+```bash
+python3 src/main.py \
+  --mode unordered-string \
+  --pc-csv data/57_cs_projects_with_pc.csv \
+  --patterns data/patterns_unordered.csv \
+  --output-file output/violations_unordered_57_cs_projects_with_pc.csv \
+  --dedup-unordered-output \
+  --dedup-output-file output/violations_unordered_57_cs_projects_with_pc_dedup.csv
+```
+
+## Generated outputs
+Depending on mode:
+
+- `output/violations_unordered_<dataset>.csv`
+- `output/violations_unordered_<dataset>_dedup.csv`
 - `output/violations_summary.csv`
 - `output/violations_evidence.csv`
 - `output/violations_summary_string.csv`
 - `output/violations_evidence_string.csv`
+- `output/violations_summary_sat.csv`
+- `output/violations_evidence_sat.csv`
+
+## Deduplicate an existing output file
+```bash
+python3 src/deduplicate_unordered_output.py \
+  --input output/violations_unordered_57_cs_projects_with_pc.csv \
+  --output output/violations_unordered_57_cs_projects_with_pc_dedup.csv
+```
+
+## Synthetic dataset and regression
+
+## Generate synthetic CSV from `test_cases.c`
+```bash
+python3 src/generate_test_pc_csv.py
+```
+
+## Run end-to-end regression
+```bash
+python3 src/run_test_cases_regression.py
+```
+
+Regression validates:
+1. synthetic PC generation
+2. detector execution
+3. expected `YES`/`NO` counts
+4. expected deduplication output

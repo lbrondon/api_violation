@@ -29,16 +29,43 @@ def read_patterns_csv(path: str) -> list[PatternRow]:
         raise ValueError(f"[patterns] Missing columns: {sorted(missing)}")
 
     patterns: list[PatternRow] = []
+    seen_pairs: set[tuple[str, str]] = set()
     for _, r in df.iterrows():
-        patterns.append(
-            PatternRow(
-                antecedents=str(r["antecedents"]).strip(),
-                consequents=str(r["consequents"]).strip(),
-                support=float(r["support"]),
-                confidence=float(r["confidence"]),
-                lift=float(r["lift"]),
+        a = str(r["antecedents"]).strip()
+        b = str(r["consequents"]).strip()
+        if not a or not b:
+            continue
+
+        support = float(r["support"])
+        confidence = float(r["confidence"])
+        lift = float(r["lift"])
+
+        key = (a, b)
+        if key not in seen_pairs:
+            patterns.append(
+                PatternRow(
+                    antecedents=a,
+                    consequents=b,
+                    support=support,
+                    confidence=confidence,
+                    lift=lift,
+                )
             )
-        )
+            seen_pairs.add(key)
+
+        # Treat catalog as unordered: also include reverse direction once.
+        rev = (b, a)
+        if a != b and rev not in seen_pairs:
+            patterns.append(
+                PatternRow(
+                    antecedents=b,
+                    consequents=a,
+                    support=support,
+                    confidence=confidence,
+                    lift=lift,
+                )
+            )
+            seen_pairs.add(rev)
     return patterns
 
 
