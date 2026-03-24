@@ -92,6 +92,26 @@ Main output artifacts:
   - reduction statistics
   - standalone CLI post-processing
 
+## False-positive analysis
+- File: `src/identify_false_positives.py`
+- Responsibilities:
+  - analyze deduplicated unordered output
+  - identify false positives caused by Cartesian cross-products among already matched PCs
+  - optionally generate a filtered CSV without confirmed false positives
+
+## Technical reporting subsystem
+- Files:
+  - `src/reporting/datasets.py`
+  - `src/reporting/metrics.py`
+  - `src/reporting/plots.py`
+  - `src/reporting/writer.py`
+  - `src/generate_technical_violation_report.py`
+- Responsibilities:
+  - load raw, deduplicated, analyzed and filtered outputs
+  - compute stakeholder-oriented metrics for violations, non-violations and false positives
+  - generate charts and metric tables automatically
+  - produce Markdown and PDF technical reports
+
 ## Algorithm flow for `unordered-string`
 
 ## 1. Normalization and indexing
@@ -158,6 +178,44 @@ If two rows map to the same canonical key, the first is kept and the next is dro
 - stable for pipeline use
 - preserves original CSV schema
 
+## Match-First Filtering
+
+## Problem
+After unordered expansion and Cartesian comparison, some `YES` rows are produced even
+when the same `(Project, File, Caller, unordered API pair)` already contains exact textual
+matches between the PCs on both sides.
+
+This happens when a caller contains multiple API-call instances under different
+preprocessor regions. The detector baseline correctly reports all pairwise combinations,
+but some of those combinations are cross-products between instances that already have
+valid exact matches in the same context.
+
+## Implemented solution
+For each context:
+1. group by `(Project, File, Caller, unordered API pair)`
+2. reconstruct the PC set of each side in canonical unordered form
+3. compute `Matched = PCs_left ∩ PCs_right`
+4. for each `YES` row:
+   - if both PCs belong to `Matched`, mark it as `ConfirmedFalsePositive`
+   - otherwise mark it as `CandidateViolation`
+
+## Why this is compatible with the current research design
+- keeps unordered API patterns
+- keeps string-based PC comparison
+- keeps the Cartesian-product detector baseline unchanged
+- moves false-positive handling to an explicit, auditable post-processing phase
+
+## Output columns added by false-positive analysis
+- `PairKey`
+- `MatchedPCsCount`
+- `MatchedPCs`
+- `OnlyLeftCount`
+- `OnlyLeftPCs`
+- `OnlyRightCount`
+- `OnlyRightPCs`
+- `FPStatus`
+- `FPReason`
+
 ## How to run
 
 ## Default command
@@ -176,6 +234,28 @@ python3 src/deduplicate_unordered_output.py \
   --input output/violations_unordered_57_cs_projects_with_pc.csv \
   --output output/violations_unordered_57_cs_projects_with_pc_dedup.csv
 ```
+
+## False-positive analysis after deduplication
+```bash
+python3 src/identify_false_positives.py \
+  --input output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
+  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv \
+  --filtered-output output/violations_unordered_57_cs_projects_with_pc_filtered.csv
+```
+
+## Automatic technical report generation
+```bash
+python3 src/generate_technical_violation_report.py \
+  --raw output/violations_unordered_57_cs_projects_with_pc.csv \
+  --dedup output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
+  --out-dir reports/technical_violation_report
+```
+
+## Architectural rationale
+- keep detection, deduplication, false-positive analysis and reporting as distinct phases
+- avoid coupling report generation with the detector baseline
+- generate reusable intermediate artifacts (`fp_analysis`, `filtered`, `tables`, `figures`)
+- keep the report pipeline deterministic and reproducible from raw + deduplicated CSVs
 
 ## Validation commands
 

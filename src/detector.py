@@ -47,10 +47,13 @@ def build_pc_index(pc_csv_path: str, chunksize: int = 200_000) -> PCIndex:
         for _, r in chunk.iterrows():
             g: GroupKey = (str(r["Project"]), str(r["File"]), str(r["Caller"]))
             callee = str(r["Callee"]).strip()
-            pc_raw = str(r["PC"]).strip()
+            pc_raw = "" if pd.isna(r["PC"]) else str(r["PC"]).strip()
 
             if pc_raw in SENTINELS:
                 pc_errors[g].add(pc_raw)
+                continue
+
+            if pc_raw == "":
                 continue
 
 

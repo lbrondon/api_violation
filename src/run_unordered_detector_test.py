@@ -7,15 +7,15 @@ from unordered_detector import UnorderedViolationDetector
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-DEFAULT_PC_CSV = os.path.join(BASE_DIR, "data", "cs_projects__with_pc.csv")
+DEFAULT_PC_CSV = os.path.join(BASE_DIR, "data", "5_cs_projects_with_pc.csv")
 DEFAULT_PATTERNS = os.path.join(BASE_DIR, "data", "patterns_unordered.csv")
 
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "violations_only_unordered.csv")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "violations_unordered_5_cs_projects_with_pc.csv")
 
 
 def main() -> None:
-    print("=== Unordered Evaluation (TEST, catalog pairs only, YES/NO) ===")
+    print("=== Unordered Evaluation (5-project sample, YES/NO) ===")
     print(f"PC input:       {DEFAULT_PC_CSV}")
     print(f"Patterns input: {DEFAULT_PATTERNS}")
     print(f"Output file:    {OUTPUT_FILE}")

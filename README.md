@@ -122,6 +122,81 @@ python3 src/deduplicate_unordered_output.py \
   --output output/violations_unordered_57_cs_projects_with_pc_dedup.csv
 ```
 
+## Identify false positives after deduplication
+This repository now includes a post-processing step called `Match-First Filtering`.
+
+Rationale:
+- keep the unordered detector unchanged
+- keep PC comparison by string
+- identify false positives created when the Cartesian product mixes API-call instances
+  that already have exact PC matches in the same `(Project, File, Caller, API pair)`
+
+Rule:
+- for each unordered API pair in the same `(Project, File, Caller)`
+- compute the exact textual intersection between the PCs of both sides
+- if a `YES` row compares two PCs that already belong to that exact-match set, mark it as
+  `ConfirmedFalsePositive`
+- otherwise keep it as `CandidateViolation`
+
+Run:
+
+```bash
+python3 src/identify_false_positives.py \
+  --input output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
+  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv \
+  --filtered-output output/violations_unordered_57_cs_projects_with_pc_filtered.csv
+```
+
+Generated columns:
+- `PairKey`
+- `MatchedPCsCount`
+- `MatchedPCs`
+- `OnlyLeftCount`
+- `OnlyLeftPCs`
+- `OnlyRightCount`
+- `OnlyRightPCs`
+- `FPStatus`
+- `FPReason`
+
+Important:
+- this step does **not** change the detector baseline
+- it is a post-processing analysis step
+- the filtered output should be used only after reviewing the classification results
+
+## Generate the technical report package
+For stakeholder-oriented reporting, the repository now provides a modular reporting
+subsystem under `src/reporting/`. It generates:
+- metric tables
+- charts
+- false-positive analysis CSV
+- filtered CSV
+- a detailed Markdown report
+- a PDF report
+
+Recommended run:
+
+```bash
+python3 src/generate_technical_violation_report.py \
+  --raw output/violations_unordered_57_cs_projects_with_pc.csv \
+  --dedup output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
+  --out-dir reports/technical_violation_report
+```
+
+Output structure:
+- `reports/technical_violation_report/figures/`
+- `reports/technical_violation_report/tables/`
+- `reports/technical_violation_report/technical_violation_report.md`
+- `reports/technical_violation_report/technical_violation_report.pdf`
+- `reports/technical_violation_report/violations_fp_analysis.csv`
+- `reports/technical_violation_report/violations_filtered.csv`
+
+Architecture:
+- `src/reporting/datasets.py`: loading and normalization
+- `src/reporting/metrics.py`: analytical metric computation
+- `src/reporting/plots.py`: figure generation
+- `src/reporting/writer.py`: markdown/PDF report generation
+- `src/generate_technical_violation_report.py`: orchestration entry point
+
 ## Synthetic dataset and regression
 
 ## Generate synthetic CSV from `test_cases.c`

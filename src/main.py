@@ -59,7 +59,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         help=(
             "Path to CSV with Project, File, Caller, Callee, PC. "
-            "If omitted, tries data/cs_projects__with_pc.csv then data/5_cs_projects__with_pc.csv."
+            "If omitted, tries data/57_cs_projects_with_pc.csv then "
+            "data/57_cs_projects__with_pc.csv."
         ),
     )
     ap.add_argument(

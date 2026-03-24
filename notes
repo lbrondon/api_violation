@@ -1,0 +1,28 @@
+pc_a and pc_b must both be non-empty to guarantee that a violation exists
+
+
+once the first item of the pattern is found, locate the second item immediately
+
+
+find two items inside a list
+
+match two free calls with malloc
+
+free malloc and malloc free are the same thing
+
+
+As a computer science specialist focused on configurable systems, continue the development of the API usage pattern violation detector for configurable C systems implemented with preprocessor directives.
+
+First step: review the modules implemented so far in detail to understand how the current solution is structured. The following modules exist under `src`:
+
+Test evaluation pipeline (synthetic dataset / test_cases):
+- unordered_detector.py + run_unordered_detector_test.py + a simple analyzer (analyze_outputs_pd_single.py)
+
+main detection module: unordered_detector.py
+
+
+
+Next steps:
+
+Before refactoring, optimize the test modules `run_unordered_detector_test.py` and `unordered_detector.py`.
+Review the module line by line because the current approach identifies API usage pattern violations by considering both `(A, B)` and `(B, A)`. Adjust the code so the detector only considers the `(A, B)` pairs contained in `patterns_unordered_test.csv`.
