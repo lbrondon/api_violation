@@ -29,6 +29,12 @@ Option B (pip user):
 python3 -m pip install --user pandas tqdm
 ```
 
+Optional for exploratory analysis:
+
+```bash
+python3 -m pip install --user jupyterlab
+```
+
 ## Input structure
 Large data files are not versioned. Place them under `data/`.
 
@@ -123,32 +129,54 @@ python3 src/deduplicate_unordered_output.py \
 ```
 
 ## Identify false positives after deduplication
-This repository now includes a post-processing step called `Match-First Filtering`.
+This repository now includes a layered post-processing step for false positives.
 
 Rationale:
 - keep the unordered detector unchanged
 - keep PC comparison by string
-- identify false positives created when the Cartesian product mixes API-call instances
-  that already have exact PC matches in the same `(Project, File, Caller, API pair)`
+- identify false positives created by Cartesian products in the same
+  `(Project, File, Caller, unordered API pair)`
 
-Rule:
-- for each unordered API pair in the same `(Project, File, Caller)`
-- compute the exact textual intersection between the PCs of both sides
-- if a `YES` row compares two PCs that already belong to that exact-match set, mark it as
-  `ConfirmedFalsePositive`
-- otherwise keep it as `CandidateViolation`
+Implemented rules:
+- `match_first_exact_match`
+  - compute the exact textual intersection between the PCs of both sides
+  - if a `YES` row compares two PCs already present in that exact-match set, mark it as
+    `ConfirmedFalsePositive`
+- `complementary_branch_coverage`
+  - detect branch partitions such as `win32` and `!(win32)`
+  - if both branches together cover the PC on the opposite side, mark the corresponding
+    `YES` rows as `ConfirmedFalsePositive`
 
 Run:
 
 ```bash
 python3 src/identify_false_positives.py \
   --input output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
-  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv \
-  --filtered-output output/violations_unordered_57_cs_projects_with_pc_filtered.csv
+  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv
 ```
 
-Generated columns:
+Main outputs:
+- `*_fp_analysis.csv`
+  - one row per detector result, enriched with canonical context, rule decisions and evidence
+- `*_filtered_all.csv`
+  - all detector rows except `ConfirmedFalsePositive`
+- `*_violations_all.csv`
+  - only rows with `Violation=YES` before removing false positives
+- `*_violations_filtered.csv`
+  - only rows with `Violation=YES` after removing false positives
+- `*_context_summary.csv`
+  - one row per `(Project, File, Caller, unordered API pair)`
+- `*_coverage_evidence.csv`
+  - one row per complementary-coverage witness
+
+Important columns in `*_fp_analysis.csv`:
+- `RowId`
+- `ContextKey`
 - `PairKey`
+- `CanonicalCallee_Left`
+- `CanonicalCallee_Right`
+- `CanonicalPC_Left`
+- `CanonicalPC_Right`
 - `MatchedPCsCount`
 - `MatchedPCs`
 - `OnlyLeftCount`
@@ -157,45 +185,28 @@ Generated columns:
 - `OnlyRightPCs`
 - `FPStatus`
 - `FPReason`
+- `FPRule`
+- `DecisionStage`
+- `CoverageWitnessId`
+- `CoverageBasePC`
+- `CoverageBranchPC1`
+- `CoverageBranchPC2`
+- `CoverageCoveredPC`
 
 Important:
 - this step does **not** change the detector baseline
 - it is a post-processing analysis step
-- the filtered output should be used only after reviewing the classification results
+- the notebook-oriented CSVs are the primary artifacts for exploratory analysis
 
-## Generate the technical report package
-For stakeholder-oriented reporting, the repository now provides a modular reporting
-subsystem under `src/reporting/`. It generates:
-- metric tables
-- charts
-- false-positive analysis CSV
-- filtered CSV
-- a detailed Markdown report
-- a PDF report
+## Notebook workflow
+The recommended analysis workflow is now:
+1. generate raw detector output
+2. deduplicate
+3. run `src/identify_false_positives.py`
+4. explore the generated CSVs in Jupyter Notebook
 
-Recommended run:
-
-```bash
-python3 src/generate_technical_violation_report.py \
-  --raw output/violations_unordered_57_cs_projects_with_pc.csv \
-  --dedup output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
-  --out-dir reports/technical_violation_report
-```
-
-Output structure:
-- `reports/technical_violation_report/figures/`
-- `reports/technical_violation_report/tables/`
-- `reports/technical_violation_report/technical_violation_report.md`
-- `reports/technical_violation_report/technical_violation_report.pdf`
-- `reports/technical_violation_report/violations_fp_analysis.csv`
-- `reports/technical_violation_report/violations_filtered.csv`
-
-Architecture:
-- `src/reporting/datasets.py`: loading and normalization
-- `src/reporting/metrics.py`: analytical metric computation
-- `src/reporting/plots.py`: figure generation
-- `src/reporting/writer.py`: markdown/PDF report generation
-- `src/generate_technical_violation_report.py`: orchestration entry point
+A starter notebook is available at:
+- `notebooks/violation_exploration.ipynb`
 
 ## Synthetic dataset and regression
 

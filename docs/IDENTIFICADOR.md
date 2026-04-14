@@ -97,20 +97,15 @@ Main output artifacts:
 - Responsibilities:
   - analyze deduplicated unordered output
   - identify false positives caused by Cartesian cross-products among already matched PCs
-  - optionally generate a filtered CSV without confirmed false positives
+  - identify false positives caused by complementary branch coverage, e.g. `X` and `!(X)`
+  - emit notebook-friendly CSVs for line-level, context-level, and witness-level analysis
 
-## Technical reporting subsystem
-- Files:
-  - `src/reporting/datasets.py`
-  - `src/reporting/metrics.py`
-  - `src/reporting/plots.py`
-  - `src/reporting/writer.py`
-  - `src/generate_technical_violation_report.py`
+## Notebook-oriented analysis
+- Directory: `notebooks/`
 - Responsibilities:
-  - load raw, deduplicated, analyzed and filtered outputs
-  - compute stakeholder-oriented metrics for violations, non-violations and false positives
-  - generate charts and metric tables automatically
-  - produce Markdown and PDF technical reports
+  - load raw, deduplicated, analyzed and filtered CSVs
+  - support exploratory analysis in Jupyter Notebook
+  - replace the previous automatic report-generation workflow
 
 ## Algorithm flow for `unordered-string`
 
@@ -178,7 +173,7 @@ If two rows map to the same canonical key, the first is kept and the next is dro
 - stable for pipeline use
 - preserves original CSV schema
 
-## Match-First Filtering
+## Layered False-Positive Filtering
 
 ## Problem
 After unordered expansion and Cartesian comparison, some `YES` rows are produced even
@@ -190,7 +185,7 @@ preprocessor regions. The detector baseline correctly reports all pairwise combi
 but some of those combinations are cross-products between instances that already have
 valid exact matches in the same context.
 
-## Implemented solution
+## Rule 1: Match-First
 For each context:
 1. group by `(Project, File, Caller, unordered API pair)`
 2. reconstruct the PC set of each side in canonical unordered form
@@ -199,6 +194,30 @@ For each context:
    - if both PCs belong to `Matched`, mark it as `ConfirmedFalsePositive`
    - otherwise mark it as `CandidateViolation`
 
+## Rule 2: Complementary Branch Coverage
+This rule handles cases such as:
+- left side: `win32`, `!(win32)`
+- right side: `TRUE`
+
+Interpretation:
+- the two left-side PCs form a complementary partition
+- together they cover `TRUE`
+- the corresponding `YES` rows are false positives caused by Cartesian pairing
+
+Conservative implementation:
+- no SAT solving
+- only a syntactic subset is supported:
+  - `TRUE`
+  - simple literal
+  - negated literal
+  - conjunctions of such literals with top-level `&&`
+
+Decision:
+1. find two PCs on the same side that differ in exactly one literal polarity
+2. derive their shared base PC
+3. if that base PC exists on the opposite side, mark the corresponding `YES` rows as
+   `ConfirmedFalsePositive`
+
 ## Why this is compatible with the current research design
 - keeps unordered API patterns
 - keeps string-based PC comparison
@@ -206,7 +225,13 @@ For each context:
 - moves false-positive handling to an explicit, auditable post-processing phase
 
 ## Output columns added by false-positive analysis
+- `RowId`
+- `ContextKey`
 - `PairKey`
+- `CanonicalCallee_Left`
+- `CanonicalCallee_Right`
+- `CanonicalPC_Left`
+- `CanonicalPC_Right`
 - `MatchedPCsCount`
 - `MatchedPCs`
 - `OnlyLeftCount`
@@ -215,6 +240,20 @@ For each context:
 - `OnlyRightPCs`
 - `FPStatus`
 - `FPReason`
+- `FPRule`
+- `DecisionStage`
+- `CoverageWitnessId`
+- `CoverageBasePC`
+- `CoverageBranchPC1`
+- `CoverageBranchPC2`
+- `CoverageCoveredPC`
+
+Additional CSV artifacts:
+- `*_filtered_all.csv`
+- `*_violations_all.csv`
+- `*_violations_filtered.csv`
+- `*_context_summary.csv`
+- `*_coverage_evidence.csv`
 
 ## How to run
 
@@ -239,23 +278,20 @@ python3 src/deduplicate_unordered_output.py \
 ```bash
 python3 src/identify_false_positives.py \
   --input output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
-  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv \
-  --filtered-output output/violations_unordered_57_cs_projects_with_pc_filtered.csv
+  --output output/violations_unordered_57_cs_projects_with_pc_fp_analysis.csv
 ```
 
-## Automatic technical report generation
-```bash
-python3 src/generate_technical_violation_report.py \
-  --raw output/violations_unordered_57_cs_projects_with_pc.csv \
-  --dedup output/violations_unordered_57_cs_projects_with_pc_dedup.csv \
-  --out-dir reports/technical_violation_report
-```
+## Notebook exploration
+- open `notebooks/violation_exploration.ipynb`
+- use `*_violations_all.csv` for all detected violations
+- use `*_violations_filtered.csv` for violations that remain after all filters
+- use `*_context_summary.csv` and `*_coverage_evidence.csv` for exploratory auditing
 
 ## Architectural rationale
-- keep detection, deduplication, false-positive analysis and reporting as distinct phases
+- keep detection, deduplication and false-positive analysis as distinct phases
 - avoid coupling report generation with the detector baseline
-- generate reusable intermediate artifacts (`fp_analysis`, `filtered`, `tables`, `figures`)
-- keep the report pipeline deterministic and reproducible from raw + deduplicated CSVs
+- generate reusable intermediate CSV artifacts for notebook-driven exploration
+- keep the analysis pipeline deterministic and reproducible from raw + deduplicated CSVs
 
 ## Validation commands
 

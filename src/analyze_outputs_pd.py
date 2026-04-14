@@ -185,7 +185,7 @@ def maybe_apply_false_positive_filter(
         return chunk
 
     analyzer = MatchFirstFalsePositiveAnalyzer()
-    analyzed_rows, _ = analyzer.analyze_rows(chunk.to_dict(orient="records"))
+    analyzed_rows, _, _, _ = analyzer.analyze_rows(chunk.to_dict(orient="records"))
     analyzed_df = pd.DataFrame(analyzed_rows)
     return analyzed_df[analyzed_df["FPStatus"].astype(str) != "ConfirmedFalsePositive"].copy()
 

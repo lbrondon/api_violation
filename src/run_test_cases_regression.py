@@ -7,6 +7,7 @@ from typing import Dict, Iterable, List, Set, Tuple
 
 from dedup_unordered import UnorderedViolationDeduplicator
 from generate_test_pc_csv import TestPcCsvGenerator
+from identify_false_positives import MatchFirstFalsePositiveAnalyzer
 from unordered_detector import UnorderedViolationDetector, EvaluationRow
 
 
@@ -103,6 +104,7 @@ class TestCasesRegressionRunner:
         detector_rows = self._run_detector()
         self._assert_detector_output(detector_rows)
         self._assert_dedup_output()
+        self._assert_false_positive_filters()
 
         print("[regression] OK: generator + unordered-string detector outputs match expected results.")
 
@@ -173,6 +175,80 @@ class TestCasesRegressionRunner:
                 f"Dedup output row count mismatch: got {stats.output_rows}, "
                 f"expected {RegressionAssertions.EXPECTED_DEDUP_ROW_COUNT}"
             )
+
+    def _assert_false_positive_filters(self) -> None:
+        analyzer = MatchFirstFalsePositiveAnalyzer()
+        rows = [
+            {
+                "Project": "ASF_MapReady",
+                "File": "ASF_MapReady/src/stp/stp.c",
+                "Caller": "on_execute_button_clicked",
+                "Callee_A": "free",
+                "Callee_B": "malloc",
+                "PC_A": "!(win32)",
+                "PC_B": "TRUE",
+                "Violation": "YES",
+            },
+            {
+                "Project": "ASF_MapReady",
+                "File": "ASF_MapReady/src/stp/stp.c",
+                "Caller": "on_execute_button_clicked",
+                "Callee_A": "free",
+                "Callee_B": "malloc",
+                "PC_A": "win32",
+                "PC_B": "TRUE",
+                "Violation": "YES",
+            },
+            {
+                "Project": "proj_test",
+                "File": "test_cases.c",
+                "Caller": "TC_control_candidate",
+                "Callee_A": "free",
+                "Callee_B": "malloc",
+                "PC_A": "FEATURE_B",
+                "PC_B": "FEATURE_A",
+                "Violation": "YES",
+            },
+            {
+                "Project": "proj_test",
+                "File": "test_cases.c",
+                "Caller": "TC_control_candidate",
+                "Callee_A": "free",
+                "Callee_B": "malloc",
+                "PC_A": "FEATURE_A",
+                "PC_B": "FEATURE_A",
+                "Violation": "NO",
+            },
+        ]
+
+        analyzed_rows, stats, context_rows, coverage_rows = analyzer.analyze_rows(rows)
+        fp_rows = [row for row in analyzed_rows if row["Project"] == "ASF_MapReady"]
+        if len(fp_rows) != 2:
+            raise AssertionError(f"Expected 2 ASF_MapReady rows, got {len(fp_rows)}")
+
+        for row in fp_rows:
+            if row["FPStatus"] != "ConfirmedFalsePositive":
+                raise AssertionError(f"Expected complementary coverage FP, got {row['FPStatus']}")
+            if row["FPReason"] != "complementary_branch_coverage":
+                raise AssertionError(f"Unexpected FPReason: {row['FPReason']}")
+            if row["CoverageBasePC"] != "TRUE":
+                raise AssertionError(f"Expected base PC TRUE, got {row['CoverageBasePC']}")
+
+        candidate_rows = [
+            row for row in analyzed_rows
+            if row["Caller"] == "TC_control_candidate" and row["Violation"] == "YES"
+        ]
+        if len(candidate_rows) != 1 or candidate_rows[0]["FPStatus"] != "CandidateViolation":
+            raise AssertionError("Control violation should remain a candidate violation.")
+
+        if stats.confirmed_false_positives != 2:
+            raise AssertionError(
+                f"Expected 2 confirmed false positives, got {stats.confirmed_false_positives}"
+            )
+        if stats.coverage_witnesses != 1:
+            raise AssertionError(f"Expected 1 coverage witness, got {stats.coverage_witnesses}")
+        if not coverage_rows or coverage_rows[0]["BasePC"] != "TRUE":
+            raise AssertionError("Coverage evidence CSV rows were not generated as expected.")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
